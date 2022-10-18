@@ -429,7 +429,7 @@ const SessionStats = (props) => console.log("Render SessionStats") || (
         </TableCell>
       </TableRow>
 
-      {Object.keys(clientsTodayByTown).map((town, total) => {
+      {Object.keys(props.clientsTodayByTown).map((town, total) => {
           <TableRow>
             <TableCell>{town}</TableCell>
             <TableCell>{total}</TableCell>
@@ -1051,7 +1051,7 @@ function App() {
     distributionDates.forEach(function(distributionDate) {
       if (!propertyToColumnMap[distributionDate]) { return; }
       if (clientToSave.isCheckedIn(distributionDate)) {
-        valuesToWrite[propertyToColumnMap[distributionDate]] = client.visits[distributionDate];
+        valuesToWrite[propertyToColumnMap[distributionDate]] = clientToSave.visits[distributionDate];
         //valuesToWrite[propertyToColumnMap[distributionDate]] = 1;
       } else {
         valuesToWrite[propertyToColumnMap[distributionDate]] = "";
@@ -1139,7 +1139,7 @@ function App() {
 
     let valueRanges = [];
 
-    if (alsoCheckIn !== null) {
+    if (checkIn !== null) {
       clientToSave.visits[todayStr] = checkIn;
       if (!propertyToColumnMap.hasOwnProperty(todayStr)) {
         valueRanges.push(createDistribuitionColumnPayload());
