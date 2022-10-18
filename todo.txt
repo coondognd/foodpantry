@@ -1,0 +1,16 @@
+-X- Add check-in button
+    -X Allow "Un-check-in" (via ToggleButton)
+Add check-in-as-absentee (+1) button, and Large Family (detail needed)
+    X - Allow "Un-check-in" (via ToggleButton)
+-X "Add user" form
+    X - Make check-in date editable and optional, as adding may be done retroactively.  Maybe a "also check in for <most recent date>" checkbox
+X "Edit user" form
+? - Refresh Google token periodically
+Make Google buttons honor state correctly between refreshes
+UI library
+    X- - Modal dialogs
+    - Loading graphic
+Allow switching dates to other distributions
+Mobile layout
+Instructions on home page
+Help icons
