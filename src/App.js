@@ -1,32 +1,23 @@
 import logo from './logo.svg';
-import { useEffect, useState, memo, useCallback } from "react";
-import CloseIcon from '@mui/icons-material/Close';
+import { useEffect, useState, useCallback } from "react";
 import Alert from '@mui/material/Alert';
-import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
-import ButtonGroup from '@mui/material/ButtonGroup';
 import Collapse from '@mui/material/Collapse';
-import Dialog from '@mui/material/Dialog';
-import DialogActions from '@mui/material/DialogActions';
-import DialogContent from '@mui/material/DialogContent';
-import DialogTitle from '@mui/material/DialogTitle';
-import FormControlLabel from '@mui/material/FormControlLabel';
-import JsBarcode from 'jsbarcode';
-import IconButton from '@mui/material/IconButton';
-import Paper from '@mui/material/Paper';
-import Switch from '@mui/material/Switch';
-import Table from '@mui/material/Table';
-import TableBody from '@mui/material/TableBody';
-import TableCell from '@mui/material/TableCell';
-import TableContainer from '@mui/material/TableContainer';
-import TableHead from '@mui/material/TableHead';
-import TableRow from '@mui/material/TableRow';
-import TextField from '@mui/material/TextField';
 import Grid from '@mui/material/Unstable_Grid2';
+import TextField from '@mui/material/TextField';
 import jwt_decode from 'jwt-decode';
 
+import ClientList from './components/ClientList'
+import DatePicker from './components/DatePicker'
+import Scanner from './components/Scanner';
+import SessionStats from './components/SessionStats';
+import ClientFormDialog from './components/ClientFormDialog';
+
+import Client from './Client';
+
 import './App.css';
-import {Html5QrcodeScanner, Html5QrcodeSupportedFormats} from "html5-qrcode"
+
+
 
 const useSessionStorage = (storageKey, fallbackState) => {
   const [value, setValue] = useState(
@@ -40,181 +31,6 @@ const useSessionStorage = (storageKey, fallbackState) => {
   return [value, setValue];
 };
 
-class Client {
-  constructor (props) {
-    if (props) {
-      this.fill(props);
-    }
-    this.visits = {}; // [];
-  } 
-
-  fill(props) {
-
-    if (!props) { return; }
-    this.firstName = props.firstName;
-    this.lastName = props.lastName;
-    this.address = props.address;
-    this.town = props.town;
-    this.phone = props.phone;
-    this.children = parseInt(props.children) || 0;
-    this.adults = parseInt(props.adults) ||  0;
-    this.seniors = parseInt(props.seniors) || 0;
-    this.legalDate = props.legalDate;
-    this.memberId = parseInt(props.memberId);
-    this.sheetRow = props.sheetRow; // The row on the spreadsheet where this client was stored.  Don't trust this for long
-
-
-    // Member IDs are still rolling out, so not everyone hase one
-    // So we need to rely on name for those without and hope for the best.
-    // Also, This can't be computed on the fly, because editing name would cause the identifier to change
-    // mid-session
-    if (this.memberId || this.lastName) {
-      this.identifier = (this.memberId) ? this.memberId : (this.lastName + this.firstName).toLowerCase();
-    }
-  }
-
-  getIdentifier() {
-    return (this.memberId) ? this.memberId : this.identifier;
-  }
-  getFamilySize() {
-    return this.adults + this.children + this.seniors;
-  }
-  hasLargeFamily() {
-    // TODO:  Make this configurable?  Not sure if that's a good idea.
-    return  this.getFamilySize() >= 7;
-  }
-  isCheckedIn(checkInDate) {
-    //return this.visits.indexOf(checkInDate) > -1;
-    return this.visits.hasOwnProperty(checkInDate) && this.visits[checkInDate] == "1";
-  }
-  isCheckedInAsPlusOne(checkInDate) {
-    //return this.visits.indexOf(checkInDate) > -1;
-    return this.visits.hasOwnProperty(checkInDate) && this.visits[checkInDate] == "P";
-  }
-}
-
-
-const ClientListing = (props) => (
-  <TableRow className="clientListing"
-  sx={{ '&:last-child td, &:last-child th': { border: 0 } }}
->
-    <TableCell component="th" scope="row">
-        <span className="clientName">{props.client.firstName} {props.client.lastName}</span> 
-    </TableCell>
-    <TableCell align="right">{props.client.town}</TableCell>
-    <TableCell align="right"> 
-      <span title="Adults: {props.client.adults} | Kids: {props.client.children | Seniors {props.client.seniors}"
-      className={props.client.hasLargeFamily() ? "family largeFamily" : "family smallFamily"} 
-      >{props.client.getFamilySize()}
-      </span>
-    </TableCell>
-    <TableCell align="right">
-      <ButtonGroup variant="outlined" size="small" aria-label="Client Actions">
-        {!props.client.isCheckedIn(props.todayStr) && !props.client.isCheckedInAsPlusOne(props.todayStr)
-          ? 
-            <>
-              <Button className="checkInButton" onClick={() => props.checkClientIn(props.client)}>Check In</Button>
-              <Button className="checkInPlusOneButton" onClick={() => props.checkClientIn(props.client, true)}>Check In As +1</Button>
-            </>
-          :
-            <Button className="checkOutButton" onClick={() => props.checkClientOut(props.client)}>Undo Check In</Button> 
-          }
-        <Button className="edit"  onClick={() => props.onClickEdit(props.client)}>Edit</Button>
-        { isNaN(props.client.memberId) ? 
-          <Button className="edit"  onClick={() => props.onClickAssignMemberNumber(props.client)}>Assign Barcode</Button>
-          :
-          <Button onClick={() => props.onClickViewMemberNumber(props.client)}>View Barcode</Button>
-        }
-      </ButtonGroup>
-    </TableCell>
-  </TableRow>
-);
-
-const ClientList = (props) => {
-  useEffect(() => {
-    console.log("Render ClienList");
-  });
-
-
-  // Dialogs
-  const [editOpen, setEditOpen] = useState(false);
-  const [memberNumberOpen, setMemberNumberOpen] = useState(false);
-  const [clientBeingEdited, setClientBeingEdited] = useState(new Client());
-
-  const onClickEdit = (client) => {
-    setClientBeingEdited(client);
-    setEditOpen(true);
-  };
-
-
-  const handleEditClose = (value) => {
-    setEditOpen(false);
-  };
-
-
-  const onClickViewMemberNumber = (client) => {
-    
-    
-    console.log("Showing dialog");
-    setMemberNumberOpen(true);
-
-    console.log("Configuring dialog info");
-    setClientBeingEdited(client);
-
-    
-
-  };
-  const handleMemberNumberClose = () => {
-    setMemberNumberOpen(false);
-  }
-
-  const onClickAssignMemberNumber = (client) => {
-    onClickViewMemberNumber(client);
-  };
-
-  return (
-    <>
-      <TableContainer component={Paper}>
-        <Table sx={{ minWidth: 650 }} aria-label="simple table">
-          <TableHead>
-            <TableRow>
-              <TableCell>Name</TableCell>
-              <TableCell align="right">Town</TableCell>
-              <TableCell align="right">Family Size</TableCell>
-              <TableCell align="right">Actions</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {props.clients.map((client) => (
-              <ClientListing 
-                key={client.getIdentifier()} 
-                client={client} 
-                checkClientIn={props.checkClientIn}
-                checkClientOut={props.checkClientOut}
-                onClickEdit={onClickEdit} 
-                onClickViewMemberNumber={onClickViewMemberNumber}
-                onClickAssignMemberNumber={onClickAssignMemberNumber}
-                todayStr={props.todayStr}/>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
-    
-      <ClientFormDialog
-        open={editOpen}
-        mode="edit"
-        clientBeingEdited={clientBeingEdited}
-        onSave={props.saveClient}
-        onClose={handleEditClose}
-      />
-      <MemberNumberDialog
-        open={memberNumberOpen}
-        client={clientBeingEdited}
-        onClose={handleMemberNumberClose}
-      />
-  </>
-  );
-};
 
 const Search = (props) => console.log("Render Search") || (
   <TextField id="search" fullWidth label="Search Clients by Name or ID Number" type="search" 
@@ -222,222 +38,9 @@ const Search = (props) => console.log("Render Search") || (
     />
 );
 
-const ClientFormDialog = (props) => {
-  const { open, mode, clientBeingEdited, onSave,  onClose } = props;
-
-  useEffect(() => {
-    console.log("Render ClientFormDialog");
-  });
-
-  const handleClientFormSave = () => {
-    clientBeingEdited.firstName = document.getElementById(mode + "FirstName").value;
-    clientBeingEdited.lastName = document.getElementById(mode + "LastName").value;
-    clientBeingEdited.address = document.getElementById(mode + "Address").value;
-    clientBeingEdited.town = document.getElementById(mode + "Town").value;
-    clientBeingEdited.phone = document.getElementById(mode + "Phone").value;
-    clientBeingEdited.children = document.getElementById(mode + "Children").value - 0;
-    clientBeingEdited.adults = document.getElementById(mode + "Adults").value - 0;
-    clientBeingEdited.seniors = document.getElementById(mode + "Seniors").value - 0;
-    if (document.getElementById(mode + "MemberId").value) {
-      clientBeingEdited.memberId = document.getElementById(mode + "MemberId").value - 0;
-    }
-    let checkIn = false;
-    if (mode == "add") {
-      // TODO: Support As+1 when adding new client.  No | Yes | Yes, as +1
-      checkIn = document.getElementById(mode + "AlsoCheckIn").checked? "1" : null;
-    }
-    let saveSuccess = onSave(clientBeingEdited,  checkIn);
-    if (saveSuccess) {
-      onClose();
-    }
-  };
-  const handleClientFormCancel = () => {
-    onClose();
-  };
-
-  return (
-    <Dialog open={open} id="{mode}ClientForm" onClose={handleClientFormCancel}
-    sx={{
-          backdropFilter: "blur(5px)",
-          //other styles here
-        }}
-    >
-      <DialogTitle>Client Information
-      <IconButton
-          aria-label="close"
-          onClick={handleClientFormCancel}
-          sx={{
-            position: 'absolute',
-            right: 8,
-            top: 8,
-            color: (theme) => theme.palette.grey[500],
-          }}
-        >
-          <CloseIcon />
-        </IconButton>
-      </DialogTitle>
-      <DialogContent>
-      <Grid container spacing={2}
-      component="form"
-      autoComplete="off"
-      p={2}
-    >
-      <Grid xs={12}><TextField id={mode + "FirstName"} label="First Name" defaultValue={clientBeingEdited.firstName} required fullWidth /></Grid>
-      <Grid xs={12}><TextField id={mode + "LastName"} label="Last Name" defaultValue={clientBeingEdited.lastName} required fullWidth  /></Grid>
-      <Grid xs={12}><TextField id={mode + "Address"} label="Street Address" defaultValue={clientBeingEdited.address} required fullWidth  /></Grid>
-      <Grid xs={12}><TextField id={mode + "Town"} label="Town" defaultValue={clientBeingEdited.town} required fullWidth /></Grid>
-      <Grid xs={12}><TextField id={mode + "Phone"} label="Phone" defaultValue={clientBeingEdited.phone} type="phone"/></Grid>
-      
-      <Grid xs={12}>Household:</Grid>
-      <Grid xs={1}></Grid><Grid xs={11}><TextField id={mode + "Children"} label="Number of Children" defaultValue={clientBeingEdited.children} type="number"/></Grid>
-      <Grid xs={1}></Grid><Grid xs={11}><TextField id={mode + "Adults"} label="Number of Adults" defaultValue={clientBeingEdited.adults} type="number"/></Grid>
-      <Grid xs={1}></Grid><Grid xs={11}><TextField id={mode + "Seniors"} label="Number of Seniors" defaultValue={clientBeingEdited.seniors} type="number"/></Grid>
-
-      <Grid xs={12}><TextField id={mode + "MemberId"} label="Member Number (Optional)" defaultValue={clientBeingEdited.memberId} type="number"/></Grid>
-      {mode == "add" && 
-        <Grid xs={12}><FormControlLabel control={<Switch defaultChecked id={mode + "AlsoCheckIn"}/>} label="Also check them in for today" /></Grid>
-      }
-      
-    </Grid>
-    </DialogContent>
-        <DialogActions>
-          <Button className="saveClientFormButton" onClick={() => handleClientFormSave()}>Save</Button>
-          <Button className="cancelClientFormButton" onClick={handleClientFormCancel}>Cancel</Button>
-          </DialogActions>
-    </Dialog>
-  );
-}
 
 
 
-const MemberNumberDialog = (props) => {
-  const { open, client, onClose } = props;
-
-  useEffect(() => {
-    console.log("Rending barcode");
-    setTimeout(function() {JsBarcode("#barcode").init()}, 1500); // TODO; Avoid needing a timeout for this
-    /*
-      JsBarcode("#barcode", client.memberId, {
-        displayValue: true
-      });  
-    */
-  }, [client]);
-
-  return (
-    <Dialog open={open} id="memberNumberDialog" onClose={onClose}
-      sx={{
-        backdropFilter: "blur(5px)",
-        //other styles here
-      }}>
-      <DialogTitle>Client Member Number
-      <IconButton
-          aria-label="close"
-          onClick={onClose}
-          sx={{
-            position: 'absolute',
-            right: 8,
-            top: 8,
-            color: (theme) => theme.palette.grey[500],
-          }}
-        >
-          <CloseIcon />
-        </IconButton>
-      </DialogTitle>
-      
-      <DialogContent>
-        <canvas id="barcode"
-          jsbarcode-value={client.memberId}
-          jsbarcode-displayvalue="true"
-          jsbarcode-fontoptions="bold">
-        </canvas>
-      </DialogContent>
-      <DialogActions>
-          <Button onClick={onClose}>OK</Button>
-      </DialogActions>
-      
-    </Dialog>
-  );
-}
-
-
-
-// Scanner library has some re-draw issues, so use memo
-const Scanner = memo((props) => {
-
-  useEffect(() => {
-    /* global Html5QrcodeSupportedFormats */
-      let html5QrcodeScanner = new Html5QrcodeScanner(
-        "reader",
-        { 
-            fps: 10, 
-            qrbox: {width: 175, height: 175},
-            
-            formatsToSupport: [ Html5QrcodeSupportedFormats.QR_CODE, Html5QrcodeSupportedFormats.CODE_128 ] 
-     
-          },
-        /* verbose= */ false);
-      html5QrcodeScanner.render(props.onScanSuccess);
-  }, []); 
-
-  return (
-    <div style={{width: '250px'}} id="reader"></div>
-  )
-});
-
-const SessionStats = (props) => console.log("Render SessionStats") || (
-  <Table aria-label="Today's Numbers">
-    <TableBody>
-      <TableRow>
-        <TableCell>
-          Total Clients Today:
-        </TableCell>
-        <TableCell>
-          {props.clientsToday}
-        </TableCell>
-      </TableRow>
-      <TableRow>
-        <TableCell>
-          Adults Today: 
-        </TableCell>
-        <TableCell>
-          {props.adultsToday}
-        </TableCell>
-      </TableRow>
-      <TableRow>
-        <TableCell>
-          Children Today:
-        </TableCell>
-        <TableCell>
-          {props.childrenToday}
-        </TableCell>
-      </TableRow>
-      <TableRow>
-        <TableCell>
-          Seniors Today
-        </TableCell>
-        <TableCell>
-          {props.seniorsToday}
-        </TableCell>
-      </TableRow>
-      
-      
-      <TableRow>
-        <TableCell>
-          By Town
-        </TableCell>
-        <TableCell>
-        </TableCell>
-      </TableRow>
-
-      {Object.keys(props.clientsTodayByTown).map((town, total) => {
-          <TableRow>
-            <TableCell>{town}</TableCell>
-            <TableCell>{total}</TableCell>
-          </TableRow>
-      })}
-    </TableBody>
-  </Table>
-);
 
 function App() {
 
@@ -462,7 +65,7 @@ function App() {
   let propertyToColumnMap = [];
   let distributionDates = [];
 
-  const todayStr = formatDateForColumn(new Date());
+  const [todayStr, setTodayStr] = useState(formatDateForColumn(new Date()));
   const [clientsToday, setClientsToday] = useState(0);
   const [childrenToday, setChildrenToday] = useState(0);
   const [adultsToday, setAdultsToday] = useState(0);
@@ -531,6 +134,13 @@ function App() {
   const handleSearch = (event) => {
     searchFor(event.target.value)
   };
+
+
+    
+  const handleDateChange = (newDate) => {
+    // TODO : Parse the date string into a date
+    setTodayStr(formatDateForColumn(newDate));
+  }
 
 /*
   useEffect(() => {
@@ -740,8 +350,14 @@ function App() {
 
   useEffect(() => {
 
+    if (typeof(gapi) == "undefined" || typeof(google) == "undefined" ) {
+      showError("There was a problem connecting to Google.  Please check your internet connection");
+      return;
+    }
+
     gapiLoaded();
-    gisLoaded();          
+    gisLoaded();
+    
     google.accounts.id.initialize({
       client_id: CLIENT_ID,
       auto_select: true, 
@@ -1042,12 +658,14 @@ function App() {
     // Iterate over client object, and arrange the values in the order they should appear in the spreadsheet
     for (const property in clientToSave) {
       //console.log(property);
-      if (property == "visit") { continue; }
+      if (property == "visit") { continue; } // This gets done below
       if (propertyToColumnMap[property] != null) {
         //console.log(clientToSave[property]);
         valuesToWrite[propertyToColumnMap[property]] = clientToSave[property];
       }
     }
+
+    // Determine visits
     distributionDates.forEach(function(distributionDate) {
       if (!propertyToColumnMap[distributionDate]) { return; }
       if (clientToSave.isCheckedIn(distributionDate)) {
@@ -1098,10 +716,11 @@ function App() {
   }
 
   async function checkClientIn(client, asPlusOne = false) {
-    if (!client.visits.includes(todayStr)) {
+    if (!(todayStr in client.visits)) {
       client.visits[todayStr] = asPlusOne ? "P" : 1;
       //client.visits.push(todayStr);
       await saveClient(client);
+
       // TODO: Maybe find a way to make this recalculate automatically.
       setClientsToday(clientsToday + 1);
       setAdultsToday(adultsToday + client.adults);
@@ -1119,6 +738,7 @@ function App() {
     delete client.visits[todayStr];
     //client.visits = client.visits.filter(visit => visit !== todayStr);
     await saveClient(client);
+
     // TODO: Maybe find a way to make this recalculate automatically.
     setClientsToday(clientsToday - 1);
     setAdultsToday(adultsToday - client.adults);
@@ -1225,7 +845,7 @@ function App() {
             <div id="user">
               {true && 
                 <>
-                  {/* User photo has some timing issues
+                  {/* User photo has some timing issues, remove for now
                   <img with="50" height="50" src={user.picture} alt={user.name} />   
                   */}
                   {user.name}
@@ -1275,6 +895,7 @@ function App() {
             seniorsToday={seniorsToday} 
             clientsTodayByTown={clientsTodayByTown}
             />
+          <DatePicker todayStr={todayStr} onChange={handleDateChange}/>
         </Grid>
       </Grid>
       <ClientFormDialog
