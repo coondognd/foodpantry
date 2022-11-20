@@ -43,9 +43,9 @@ const ClientListing = (props) => (
           }
         <Button className="edit"  onClick={() => props.onClickEdit(props.client)}>Edit</Button>
         { isNaN(props.client.memberId) ? 
-          <Button className="edit"  onClick={() => props.onClickAssignMemberNumber(props.client)}>Assign Barcode</Button>
+          <Button className="clientListingBarcodeButton edit"  onClick={() => props.onClickAssignMemberNumber(props.client)}>Assign Barcode</Button>
           :
-          <Button onClick={() => props.onClickViewMemberNumber(props.client)}>View Barcode</Button>
+          <Button className="clientListingBarcodeButton" onClick={() => props.onClickViewMemberNumber(props.client)}>View Barcode</Button>
         }
       </ButtonGroup>
     </TableCell>

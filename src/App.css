@@ -55,3 +55,7 @@
 .clientListing:hover {
   background-color: #eeeeff;
 }
+
+.clientListingBarcodeButton {
+  min-width: 135px !important;
+}
