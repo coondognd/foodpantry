@@ -12,7 +12,10 @@ export default class Client {
     this.firstName = props.firstName;
     this.lastName = props.lastName;
     this.address = props.address;
+    this.address2 = props.address2;
     this.town = props.town;
+    this.state = props.state;
+    this.zipcode = props.zipcode;
     this.phone = props.phone;
     this.children = parseInt(props.children) || 0;
     this.adults = parseInt(props.adults) ||  0;
@@ -43,10 +46,10 @@ export default class Client {
   }
   isCheckedIn(checkInDate) {
     //return this.visits.indexOf(checkInDate) > -1;
-    return this.visits.hasOwnProperty(checkInDate) && this.visits[checkInDate] == "1";
+    return this.visits.hasOwnProperty(checkInDate) && this.visits[checkInDate] == "Normal";
   }
   isCheckedInAsPlusOne(checkInDate) {
     //return this.visits.indexOf(checkInDate) > -1;
-    return this.visits.hasOwnProperty(checkInDate) && this.visits[checkInDate] == "P";
+    return this.visits.hasOwnProperty(checkInDate) && this.visits[checkInDate] == "Plus One";
   }
 }

@@ -52,6 +52,7 @@ function App() {
   const API_KEY = 'AIzaSyDIt0cxWOmicBKtuLGsQ5MMLQmingWfgrY';
   const SPREADSHEET = '1idxMHE3OYeawKb6jQEpIofWAFJ3UbRqmyh2Qy5C-hXQ';
   const SHEET = "Client List"
+  const COLUMN_OFFSET = 1; // How many cols to skip before reading data
 
   // Discovery doc URL for APIs used by the quickstart
   const DISCOVERY_DOC = 'https://sheets.googleapis.com/$discovery/rest?version=v4';
@@ -476,6 +477,7 @@ function App() {
     // Remember the column numbers in a map, for writing data back later. 
     for (i=0;i<headers.length;i++) {
       let thisHeader = headers[i].formattedValue;
+      if (!thisHeader) { continue; }
       // console.log(thisHeader);
       switch(thisHeader.toLowerCase()) {
         case 'first name' :
@@ -490,18 +492,26 @@ function App() {
         case 'street address' :
           propertyToColumnMap['address'] = i;
           break;
+          case 'street address 2' :
+            propertyToColumnMap['address2'] = i;
+            break;
+        case 'tefap date' :
+          propertyToColumnMap['legalDate'] = i;
+          break;
         case 'town' :
         case 'phone' :
         case 'adults' :
         case 'children' :
         case 'seniors' :
+        case 'state' :
+        case 'zipcode' :
           propertyToColumnMap[thisHeader.toLowerCase()] = i;
           break;
         default:
+          propertyToColumnMap[thisHeader.toLowerCase()] = i;
           // Each visit date can also be a column, so try to spot those as well. 
           // See if trying to parse it as a date returns a plausible value 
           if (Date.parse(thisHeader) > 1420088400000) { // Jan 1, 2015, chosen arbitrarily.
-            propertyToColumnMap[thisHeader] = i;
             distributionDates.push(thisHeader);
           }
       }
@@ -528,11 +538,15 @@ function App() {
         firstName: thisClientRow[propertyToColumnMap['firstName']].formattedValue,
         lastName:  thisClientRow[propertyToColumnMap['lastName' ]].formattedValue,
         address:  thisClientRow[propertyToColumnMap['address' ]].formattedValue,
+        address2:  thisClientRow[propertyToColumnMap['address2' ]].formattedValue,
+        state:  thisClientRow[propertyToColumnMap['state' ]].formattedValue,
+        zipcode:  thisClientRow[propertyToColumnMap['zipcode' ]].formattedValue,
         town:  thisClientRow[propertyToColumnMap['town' ]].formattedValue,
         phone:  thisClientRow[propertyToColumnMap['phone' ]].formattedValue,
         children:  thisClientRow[propertyToColumnMap['children' ]].formattedValue,
         adults:  thisClientRow[propertyToColumnMap['adults' ]].formattedValue,
         seniors:  thisClientRow[propertyToColumnMap['seniors' ]].formattedValue,
+        legalDate:  thisClientRow[propertyToColumnMap['legalDate' ]].formattedValue,
         memberId:  thisClientRow[propertyToColumnMap['memberId' ]].formattedValue,
         sheetRow: sheetRow
         // TODO: Other properties here
@@ -546,7 +560,7 @@ function App() {
         //console.log(thisClientRow[propertyToColumnMap[distributionDate]]);
         if (thisClientRow[propertyToColumnMap[distributionDate]] && thisClientRow[propertyToColumnMap[distributionDate]].hasOwnProperty('formattedValue')) {
           
-          thisClient.visits[distributionDate] = thisClientRow[propertyToColumnMap[distributionDate]];
+          thisClient.visits[distributionDate] = thisClientRow[propertyToColumnMap[distributionDate]].formattedValue;
           //thisClient.visits.push(distributionDate);
           
           if (distributionDate == todayStr) {
@@ -595,7 +609,7 @@ function App() {
   }
 */
 
-  function colName(n) {
+  function colName(n) {   // TODO: Memoize this
     var ordA = 'A'.charCodeAt(0);
     var ordZ = 'Z'.charCodeAt(0);
     var len = ordZ - ordA + 1;
@@ -614,7 +628,7 @@ function App() {
   function createDistribuitionColumnPayload() {
     
       // It will go after the last column
-      propertyToColumnMap[todayStr] = Object.keys(propertyToColumnMap).length; // + 1;
+      propertyToColumnMap[todayStr] = Object.keys(propertyToColumnMap).length;
       distributionDates.push(todayStr);
       let columnName = colName(Object.keys(propertyToColumnMap).length-1); 
       return {
@@ -661,7 +675,7 @@ function App() {
       if (property == "visit") { continue; } // This gets done below
       if (propertyToColumnMap[property] != null) {
         //console.log(clientToSave[property]);
-        valuesToWrite[propertyToColumnMap[property]] = clientToSave[property];
+        valuesToWrite[propertyToColumnMap[property] - COLUMN_OFFSET] = clientToSave[property];
       }
     }
 
@@ -669,16 +683,16 @@ function App() {
     distributionDates.forEach(function(distributionDate) {
       if (!propertyToColumnMap[distributionDate]) { return; }
       if (clientToSave.isCheckedIn(distributionDate)) {
-        valuesToWrite[propertyToColumnMap[distributionDate]] = clientToSave.visits[distributionDate];
+        valuesToWrite[propertyToColumnMap[distributionDate] - COLUMN_OFFSET] = clientToSave.visits[distributionDate];
         //valuesToWrite[propertyToColumnMap[distributionDate]] = 1;
       } else {
-        valuesToWrite[propertyToColumnMap[distributionDate]] = "";
+        valuesToWrite[propertyToColumnMap[distributionDate] - COLUMN_OFFSET] = "";
       }
     });
 
     // Determine the range values
-    const startColumn = "A";
-    const endColumn = colName(Object.keys(propertyToColumnMap).length);
+    const startColumn = colName(COLUMN_OFFSET); 
+    const endColumn = colName(Object.keys(propertyToColumnMap).length - 1 + COLUMN_OFFSET);
 
 
     valueRanges.push({
@@ -689,11 +703,10 @@ function App() {
       ]
     });
 
-    //console.log(valueRanges);
-    //console.log(propertyToColumnMap.length);
     /* global gapi */
     let response;
-    //console.log( SHEET + "!" + startColumn + rowToUpdate + ":" + endColumn + rowToUpdate);
+    console.log( SHEET + "!" + startColumn + rowToUpdate + ":" + endColumn + rowToUpdate);
+    console.log(valuesToWrite);
     try {
       const body = {
         valueInputOption: 'RAW',
@@ -717,7 +730,7 @@ function App() {
 
   async function checkClientIn(client, asPlusOne = false) {
     if (!(todayStr in client.visits)) {
-      client.visits[todayStr] = asPlusOne ? "P" : 1;
+      client.visits[todayStr] = asPlusOne ? "Plus One" : "Normal";
       //client.visits.push(todayStr);
       await saveClient(client);
 
@@ -730,7 +743,7 @@ function App() {
     }
 
     // Google only seems to support this on button click, so I'm putting it here
-    updateGoogleAuth(); 
+    //updateGoogleAuth(); 
 
   }
 
@@ -779,7 +792,7 @@ function App() {
       if (property == "visit") { continue; }
       if (propertyToColumnMap[property] != null) {
         //console.log(clientToSave[property]);
-        valuesToWrite[propertyToColumnMap[property]] = clientToSave[property];
+        valuesToWrite[propertyToColumnMap[property] - COLUMN_OFFSET] = clientToSave[property];
       }
     }
     for (var visit in clientToSave.visits) {
@@ -787,15 +800,15 @@ function App() {
       //console.log(visit);
       if (propertyToColumnMap[visit]) {
         //console.log("1");
-        valuesToWrite[propertyToColumnMap[visit]] = clientToSave.visits[visit];
+        valuesToWrite[propertyToColumnMap[visit] - COLUMN_OFFSET] = clientToSave.visits[visit];
       }
     //});
     }
 
 
     // Determine the range values
-    const startColumn = "A";
-    const endColumn = colName(Object.keys(propertyToColumnMap).length);
+    const startColumn = colName(COLUMN_OFFSET);
+    const endColumn = colName(Object.keys(propertyToColumnMap).length - 1 + COLUMN_OFFSET);
 
 
     valueRanges.push({
@@ -808,7 +821,7 @@ function App() {
 
     // Save row
     let response;
-    //console.log( SHEET + "!" + startColumn + rowToUpdate + ":" + endColumn + rowToUpdate);
+    console.log( SHEET + "!" + startColumn + rowToUpdate + ":" + endColumn + rowToUpdate);
     try {
       const body = {
         valueInputOption: 'RAW',
@@ -848,7 +861,7 @@ function App() {
                   {/* User photo has some timing issues, remove for now
                   <img with="50" height="50" src={user.picture} alt={user.name} />   
                   */}
-                  {user.name}
+                  {user.name} &nbsp;
                   <Button variant="contained" id="signOutButton" className="g_id_signout" onClick={ (e) => handleSignoutClick(e)}>Sign Out</Button>  
                 </>
               }
