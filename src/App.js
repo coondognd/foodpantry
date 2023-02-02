@@ -2,6 +2,7 @@ import logo from './logo.svg';
 import { useEffect, useState, useCallback } from "react";
 import Alert from '@mui/material/Alert';
 import Button from '@mui/material/Button';
+import CircularProgress from '@mui/material/CircularProgress'
 import Collapse from '@mui/material/Collapse';
 import Grid from '@mui/material/Unstable_Grid2';
 import TextField from '@mui/material/TextField';
@@ -16,6 +17,7 @@ import ClientFormDialog from './components/ClientFormDialog';
 import Client from './Client';
 
 import './App.css';
+import { StayPrimaryLandscapeOutlined } from '@mui/icons-material';
 
 
 
@@ -63,8 +65,8 @@ function App() {
 
   
 
-  let propertyToColumnMap = [];
-  let distributionDates = [];
+  const [propertyToColumnMap, setPropertyColumnMap] = useState([]);
+  const [distributionDates, setDistributionDates] = useState([]);
 
   const [todayStr, setTodayStr] = useState(formatDateForColumn(new Date()));
   const [clientsToday, setClientsToday] = useState(0);
@@ -78,6 +80,8 @@ function App() {
   const [clients, setClients] = useState([]);
   const [errorOpen, setErrorOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
+
+  const [clientListLoading, setClientListLoading] = useState(true);
 
   const [nextAvailableMemberNumber, setNextAvailableMemberNumber] = useState(0); // For assigning Member IDs to new clients
 
@@ -143,13 +147,6 @@ function App() {
     setTodayStr(formatDateForColumn(newDate));
   }
 
-/*
-  useEffect(() => {
-    // A bit hacky
-    console.log("Redrawing search because clients changed");
-    handleSearch({target: { value: document.getElementById('search').value}});
-  }, [clients]);
-*/
   const showError = (message) => {
     document.getElementById('error').innerHTML = message;
     setErrorOpen(true);
@@ -169,13 +166,10 @@ function App() {
  *
  */ 
 
-  let tokenClient;
+  let [tokenClient, setTokenClient] = useState();
   let gapiInited = false;
   let gisInited = false;
   const [authInterval, setAuthInterval] = useState();
-
-  // document.getElementById('signInButton').style.visibility = 'hidden';
-  // document.getElementById('signOutButton').style.visibility = 'hidden';
 
   /**
    * Callback after api.js is loaded.
@@ -219,11 +213,12 @@ function App() {
   function gisLoaded() {
 
     /* global google */
-    tokenClient = google.accounts.oauth2.initTokenClient({
+    const tC = google.accounts.oauth2.initTokenClient({
       client_id: CLIENT_ID,
       scope: SCOPES,
       callback: '', // defined later
     });
+    setTokenClient(tC);
     console.log("gisLoaded");
     gisInited = true;
     maybeEnableButtons();
@@ -252,12 +247,7 @@ function App() {
     let expire = new Date();
     expire.setTime(expire.getTime() + 1 * 3600 * 1000);
     sessionStorage.setItem('gToken', gapi.client.getToken().access_token + "|" + expire.getTime());
-    /*
-    let expire = new Date();
-    expire.setTime(expire.getTime() + 1 * 3600 * 1000);
-    document.cookie="gToken=" + gapi.client.getToken().access_token + ";";
-    document.cookie = "expires=" + expire.toUTCString() + ";";
-    */
+
   }
 
   function userIsSignedIn() {
@@ -275,30 +265,34 @@ function App() {
       }
     }
   }
+  // handler for when token expires
+async function getNewToken(err, tC) {
+  if (err.result.error.code == 401 || (err.result.error.code == 403) &&
+      (err.result.error.status == "PERMISSION_DENIED")) {
 
-  function updateGoogleAuth() {
-    let tokenAndExp = sessionStorage.getItem('gToken');
-    if (tokenAndExp) {
-      let [token, exp] = tokenAndExp.split("|", 2);
-      let expDate = new Date();
-      expDate.setTime(exp);
-      let now = new Date();
-      if (expDate.getTime() - now.getTime() < 1000 * 60 * 45) {
-        
-        console.log("Updating google token periodically");
-    /*
-    gapi.auth.authorize({
-      client_id: CLIENT_ID,
-      scope: SCOPES,
-      immediate: true,
-      callback: 'saveGoogleAuthToken'
-    })
-    */
-   
-        tokenClient.requestAccessToken({ hint: user.email, prompt: ''});
+    // The access token is missing, invalid, or expired, prompt for user consent to obtain one.
+    await new Promise((resolve, reject) => {
+      try {
+        // Settle this promise in the response callback for requestAccessToken()
+        tC.callback = (resp) => {
+          if (resp.error !== undefined) {
+            reject(resp);
+          }
+          // GIS has automatically updated gapi.client with the newly issued access token.
+          console.log('gapi.client access token: ' + JSON.stringify(gapi.client.getToken()));
+          resolve(resp);
+        };
+        tC.requestAccessToken({ hint: user.email, prompt: ''});
+      } catch (err) {
+        console.log(err);
       }
-    }
+    });
+  } else {
+    // Errors unrelated to authorization: server errors, exceeding quota, bad requests, and so on.
+    throw new Error(err);
   }
+}
+
 
   /**
    *  Sign in the user upon button click.
@@ -316,8 +310,10 @@ function App() {
       //setAuthInterval(setInterval(updateGoogleAuth, 1000 * 60 * 30));
       //await listMajors();
       console.log("Auth complete, loading data");
+      setClientListLoading(true);
       let latestClients = await loadClientData();
       if (latestClients) setClients(latestClients);
+      setClientListLoading(false);
     };
     if (gapi.client.getToken() === null) {
       // Prompt the user to select a Google Account and ask for consent to share their data
@@ -327,9 +323,10 @@ function App() {
     } else {
       // Skip display of account chooser and consent dialog for an existing session.
       console.log("User has a token");
-      //tokenClient.requestAccessToken({ hint: user.email, prompt: ''});
+      setClientListLoading(true);
       let latestClients = await loadClientData();
       if (latestClients) setClients(latestClients);
+      setClientListLoading(false);
     }
   }
 
@@ -376,72 +373,59 @@ function App() {
         google.accounts.id.prompt(); // also display the One Tap dialog
   
   }, []);
-  /*
-    // useEffect is a way to get something to only run once
-    useEffect(() => {
-      console.log("Initializing");
-      // global google 
-      google.accounts.id.initialize({
-        client_id: "550174706281-ji890svg8tuadu0fifgdmuh1qssk2ect.apps.googleusercontent.com",
-        callback: handleGoogleIdentificationCallbackResponse
-      });
-  
-      google.accounts.id.renderButton(
-        document.getElementById("signInDiv"),
-        {theme : "outline", size: "large"}
-      );
-      google.accounts.id.prompt();
-    }, []);
-  */
 
-    const handleGISComplete = (response) => {
-      console.log("Signed In, maybe?");
-      const responsePayload = jwt_decode(response.credential);
- 
-      console.log("ID: " + responsePayload.sub);
-      console.log('Full Name: ' + responsePayload.name);
-      console.log('Given Name: ' + responsePayload.given_name);
-      console.log('Family Name: ' + responsePayload.family_name);
-      console.log("Image URL: " + responsePayload.picture);
-      console.log("Email: " + responsePayload.email);
-      console.log(responsePayload);
-      setUser(responsePayload);
-      document.getElementById('GISButtons').style.visibility = 'hidden';
-      document.getElementById('user').style.visibility = 'visible';
-      console.log("User info retrieve from google, now we can retrieve data");
-      handleAuthClick();
-    }
+
+  const handleGISComplete = (response) => {
+    console.log("Signed In, maybe?");
+    const responsePayload = jwt_decode(response.credential);
+
+    console.log("ID: " + responsePayload.sub);
+    console.log('Full Name: ' + responsePayload.name);
+    console.log('Given Name: ' + responsePayload.given_name);
+    console.log('Family Name: ' + responsePayload.family_name);
+    console.log("Image URL: " + responsePayload.picture);
+    console.log("Email: " + responsePayload.email);
+    console.log(responsePayload);
+    setUser(responsePayload);
+    document.getElementById('GISButtons').style.visibility = 'hidden';
+    document.getElementById('user').style.visibility = 'visible';
+    console.log("User info retrieve from google, now we can retrieve data");
+    handleAuthClick();
+  }
 
   /* 
    * END GOOGLE STUFF
    */
 
-  async function loadClientDataClick() {
-    console.log("User clicked to load data");
-    let latestClientData = await loadClientData();
-    setClients(latestClientData);
-  }
-
   async function loadClientData() {
     /* global gapi */
+
     let response;
+
+    /*
+    gapi.client.sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET, includeGridData: true})
+    .then(sheetsAPIResponse => {response = sheetsAPIResponse})
+  .catch(err  => getNewToken(err))  // for authorization errors obtain an access token
+  .then(retry => gapi.client.sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET, includeGridData: true}))
+  .then(sheetsAPIResponse => {response = sheetsAPIResponse})
+  .catch(err  => console.log(err));   // cancelled by user, timeout, etc.
+  */
     try {
-      response =  await gapi.client.sheets.spreadsheets.get({
-        spreadsheetId: SPREADSHEET,
-        includeGridData: true
-      });
+      response =  await gapi.client.sheets.spreadsheets.get({spreadsheetId: SPREADSHEET, includeGridData: true});
     } catch (err) {
-      let errorStr = "There was a problem requesting the client data from Google.";
-      console.log(err);
-      if (err && err.result && err.result.error) {
-        errorStr += "'" + err.result.error.message + "'";
-        //if (err.result.error.code == "403") { 
-        //  handleAuthClick(); // Try to get permissions again? May need to check for user here.
-        //}
+      getNewToken(err, tokenClient);
+      try {
+        response =  await gapi.client.sheets.spreadsheets.get({spreadsheetId: SPREADSHEET, includeGridData: true});
+      } catch (err) {
+        let errorStr = "There was a problem requesting the client data from Google.";
+        if (err && err.result && err.result.error) {
+          errorStr += "'" + err.result.error.message + "'";
+        }
+        showError(errorStr);
+        return;
       }
-      showError(errorStr);
-      return;
     }
+    
     const result = response.result;
     if (!result || !result.sheets || result.sheets.length == 0) {
       showError('No values found.');
@@ -470,6 +454,8 @@ function App() {
     const headers = rows[0].values; // The first row has the column names
     // console.log(headers);
     const clientRows = rows.splice(1);  // The ramaining rows have the column values
+    let propertyToColumnMap = [];
+    let distributionDates = [];
     //console.log(clientRows);
     // Figure out which column corresponds with each Client property.
     // This may be overkill, but it means the spreadsheet can handle some column shuffling,
@@ -598,6 +584,8 @@ function App() {
     setClientsTodayByTown(clientsTodayByTownSoFar);
     setNextAvailableMemberNumber(nextAvailableMemberNumberSoFar);
 
+    setPropertyColumnMap(propertyToColumnMap);
+    setDistributionDates(distributionDates);
     //setClients(updatedClients);
 
     return updatedClients;
@@ -628,8 +616,13 @@ function App() {
   function createDistribuitionColumnPayload() {
     
       // It will go after the last column
-      propertyToColumnMap[todayStr] = Object.keys(propertyToColumnMap).length;
-      distributionDates.push(todayStr);
+      let pTCM = propertyToColumnMap;
+      pTCM[todayStr] = Object.keys(propertyToColumnMap).length;
+      setPropertyColumnMap(pTCM);
+
+      let dDs = distributionDates;
+      dDs.push(todayStr);
+      setDistributionDates(dDs);
       let columnName = colName(Object.keys(propertyToColumnMap).length-1); 
       return {
         "range": SHEET + "!" + columnName + "1",
@@ -641,13 +634,13 @@ function App() {
   }
 
   async function saveClient(clientToSave) {
-    //console.log(clientToSave);
-    let latestClientData = await loadClientData();
-    if (!latestClientData) { console.log("Could not load Client Data for saving changes"); return; }
-    //console.log(clientToSave);
-
-    // TODO:  If sheet hasn't been modified in last, say, 24 hours, make a backup prior to making changes
-
+    console.log(clientToSave);
+    
+    // Loading data before every save was slow (and paranoid), so I've commented it out
+      //let latestClientData = await loadClientData();  // May be paranoid.  Just being sure nothing changed
+      //if (!latestClientData) { console.log("Could not load Client Data for saving changes"); return; }
+    let latestClientData = clients;
+    
     let rowToUpdate = null;
     let clientIndexToUpdate = null;
     for (let i=0;i<latestClientData.length;i++) {
@@ -707,25 +700,39 @@ function App() {
     let response;
     console.log( SHEET + "!" + startColumn + rowToUpdate + ":" + endColumn + rowToUpdate);
     console.log(valuesToWrite);
-    try {
-      const body = {
-        valueInputOption: 'RAW',
-        data: [ valueRanges ],
-      }
-      response =  await gapi.client.sheets.spreadsheets.values.batchUpdate({
-        spreadsheetId:  SPREADSHEET
-      },
-        body
-      );
-    } catch (err) {
-      showError("There was a problem saving data to Google: " + err.message);
-      console.log(err);
-      return;
+
+    
+    const body = {
+      valueInputOption: 'RAW',
+      data: [ valueRanges ],
     }
-    const result = response.result;
-    latestClientData[clientIndexToUpdate] = clientToSave;
-    setClients(latestClientData);
-    return true;
+    let saveSuccess = false;
+
+    
+    try {
+      /*
+      let err = {result : {error : {code : 401}}};
+      console.log("Getting new token with tokenClient");
+      console.log(tokenClient);
+      getNewToken(err, tokenClient);
+      */
+      response =  await gapi.client.sheets.spreadsheets.values.batchUpdate({ spreadsheetId:  SPREADSHEET }, body);
+    } catch (err) {
+      getNewToken(err, tokenClient);
+      try {
+        response =  await gapi.client.sheets.spreadsheets.values.batchUpdate({ spreadsheetId:  SPREADSHEET }, body);
+      } catch (err) {
+        showError("There was a problem saving data to Google: " + err.message);
+        return;
+      }
+    }
+    
+    //const result = response.result;
+    if (saveSuccess) {
+      latestClientData[clientIndexToUpdate] = clientToSave;
+      setClients(latestClientData);
+    }
+    return saveSuccess;
   }
 
   async function checkClientIn(client, asPlusOne = false) {
@@ -822,22 +829,24 @@ function App() {
     // Save row
     let response;
     console.log( SHEET + "!" + startColumn + rowToUpdate + ":" + endColumn + rowToUpdate);
-    try {
-      const body = {
-        valueInputOption: 'RAW',
-        data: [ valueRanges ],
-      }
-      response =  await gapi.client.sheets.spreadsheets.values.batchUpdate({
-        spreadsheetId:  SPREADSHEET
-      },
-       body
-      );
-    } catch (err) {
-      showError("There was a problem saving data to Google: " + err.message);
-      console.log(err);
-      return;
+    const body = {
+      valueInputOption: 'RAW',
+      data: [ valueRanges ],
     }
-    const result = response.result;
+
+    try {
+      response =  await gapi.client.sheets.spreadsheets.values.batchUpdate({spreadsheetId:  SPREADSHEET}, body );
+    } catch (err) {
+      getNewToken(err, tokenClient);  
+      try {
+        response =  await gapi.client.sheets.spreadsheets.values.batchUpdate({spreadsheetId:  SPREADSHEET}, body );
+      } catch (err) {
+        showError("There was a problem saving data to Google: " + err.message);
+        console.log(err);
+        return;
+      }
+    }
+    //const result = response.result;
     //setSearch(clientToSave.memberId);  // This causes problems for some reason
     latestClientData.push(clientToSave);
     setClients(latestClientData);
@@ -885,6 +894,9 @@ function App() {
             <Grid xs={10}><Search search={searchTerm} onSearch={handleSearch} /></Grid>
             <Grid xs={2}><Button variant="contained" id="addButton" onClick={onClickAdd}>Add New Client</Button></Grid>
             <Grid xs={12}>
+               {clientListLoading && 
+                <CircularProgress />
+                }
               <ClientList 
                 clients={searchedClients} 
                 todayStr={todayStr} 
